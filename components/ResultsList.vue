@@ -33,12 +33,16 @@
           <div class="result-stats">
             <div class="stat-item">
               <span class="stat-label">Оригінал:</span>
-              <span class="stat-value">{{ formatSize(result.originalSize) }}</span>
+              <div class="stat-value-wrapper">
+                <span class="stat-value">{{ formatSize(result.originalSize) }}</span>
+                <span v-if="result.width && result.height" class="stat-dimensions">{{ result.width }}×{{ result.height }}</span>
+              </div>
             </div>
             <div class="stat-item">
               <span class="stat-label">Оптимізований:</span>
               <div class="stat-value-wrapper">
                 <span class="stat-value success">{{ formatSize(result.optimizedSize) }}</span>
+                <span v-if="result.optimizedWidth && result.optimizedHeight" class="stat-dimensions">{{ result.optimizedWidth }}×{{ result.optimizedHeight }}</span>
                 <span class="stat-savings">
                   ({{ calculateSavings(result.originalSize, result.optimizedSize) }}%)
                 </span>
@@ -48,8 +52,15 @@
               <span class="stat-label">WebP:</span>
               <div class="stat-value-wrapper">
                 <span class="stat-value success">{{ formatSize(result.webpSize) }}</span>
+                <span v-if="result.webpWidth && result.webpHeight" class="stat-dimensions">{{ result.webpWidth }}×{{ result.webpHeight }}</span>
                 <span class="stat-savings">
                   ({{ calculateSavings(result.originalSize, result.webpSize) }}%)
+                </span>
+                <span v-if="!willWebPBeInArchive(result)" class="archive-excluded-badge" title="Не буде включено в архів">
+                  ⚠️
+                </span>
+                <span v-else class="archive-included-badge" title="Буде включено в архів">
+                  ✓
                 </span>
               </div>
             </div>
@@ -77,14 +88,63 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   results: {
     type: Array,
     required: true
+  },
+  skipLargerWebP: {
+    type: Boolean,
+    default: false
+  },
+  skipSmallOptimized: {
+    type: Boolean,
+    default: false
+  },
+  minSizeThreshold: {
+    type: Number,
+    default: 20
+  },
+  skipWebpIfNotMuchSmaller: {
+    type: Boolean,
+    default: false
+  },
+  webpSizeDifferenceThreshold: {
+    type: Number,
+    default: 10
   }
 })
 
 const emit = defineEmits(['download-optimized', 'download-webp', 'download-all', 'clear'])
+
+// Функція для визначення, чи WebP буде в архіві
+const willWebPBeInArchive = (result) => {
+  let willIncludeWebP = true
+  
+  // Перевірка 1: Пропускаємо WebP, якщо він більший за оптимізований
+  if (props.skipLargerWebP && result.webpSize > result.optimizedSize) {
+    willIncludeWebP = false
+  }
+  
+  // Перевірка 2: Пропускаємо WebP, якщо оптимізоване зображення менше порогу
+  if (props.skipSmallOptimized && willIncludeWebP) {
+    const optimizedSizeKB = result.optimizedSize / 1024
+    if (optimizedSizeKB < props.minSizeThreshold) {
+      willIncludeWebP = false
+    }
+  }
+  
+  // Перевірка 3: Пропускаємо WebP, якщо він менший за оптимізоване на менше порогу
+  if (props.skipWebpIfNotMuchSmaller && willIncludeWebP) {
+    const sizeDifference = result.optimizedSize - result.webpSize
+    const thresholdBytes = props.webpSizeDifferenceThreshold * 1024 // Конвертуємо КБ в байти
+    if (sizeDifference < thresholdBytes) {
+      willIncludeWebP = false
+    }
+  }
+  
+  return willIncludeWebP
+}
 
 const formatSize = (bytes) => {
   if (bytes === 0) return '0 B'
@@ -156,6 +216,7 @@ const handleClear = () => {
 }
 
 .result-item {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -231,11 +292,36 @@ const handleClear = () => {
   }
 }
 
+.stat-dimensions {
+  font-size: 0.875rem;
+  color: $text-secondary;
+  font-weight: 500;
+  margin-left: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  background: $background-tertiary;
+  border-radius: 4px;
+}
+
 .stat-savings {
   font-size: 0.875rem;
   color: $success-color;
   font-weight: 500;
   margin-left: 0.25rem;
+}
+
+.archive-included-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  color: $success-color;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.archive-excluded-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  color: $text-secondary;
+  font-size: 0.875rem;
 }
 
 .btn {

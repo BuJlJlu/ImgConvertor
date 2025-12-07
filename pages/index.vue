@@ -38,6 +38,11 @@
       <ResultsList 
         v-if="results.length > 0"
         :results="results"
+        :skip-larger-web-p="skipLargerWebP"
+        :skip-small-optimized="skipSmallOptimized"
+        :min-size-threshold="minSizeThreshold"
+        :skip-webp-if-not-much-smaller="skipWebpIfNotMuchSmaller"
+        :webp-size-difference-threshold="webpSizeDifferenceThreshold"
         @download-optimized="handleDownloadOptimized"
         @download-webp="handleDownloadWebP"
         @download-all="handleDownloadAll"

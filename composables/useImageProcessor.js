@@ -974,6 +974,26 @@ export const useImageProcessor = () => {
     })
   }
 
+  // Допоміжна функція для отримання розмірів зображення з blob
+  const getImageDimensions = (blob) => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      const url = URL.createObjectURL(blob)
+      
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        resolve({ width: img.width, height: img.height })
+      }
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        resolve(null)
+      }
+      
+      img.src = url
+    })
+  }
+
   const processFile = async (
     file,
     quality,
@@ -981,6 +1001,10 @@ export const useImageProcessor = () => {
   ) => {
     // Завантажити зображення
     const img = await optimizeImage(file, optimizationLevel)
+
+    // Зберігаємо розміри оригіналу
+    const originalWidth = img.width
+    const originalHeight = img.height
 
     // Створити назви файлів (зберігаємо оригінальну назву)
     const originalName = file.name
@@ -992,6 +1016,7 @@ export const useImageProcessor = () => {
     let optimizedBlob
     let finalOptimizedBlob
     let finalOptimizedSize
+    let optimizedDimensions = { width: originalWidth, height: originalHeight }
     
     try {
       optimizedBlob = await optimizeOriginal(img, file.type || file.name, optimizationLevel, file.size, file)
@@ -1000,18 +1025,32 @@ export const useImageProcessor = () => {
       if (optimizedBlob.size >= file.size) {
         finalOptimizedBlob = file
         finalOptimizedSize = file.size
+        optimizedDimensions = { width: originalWidth, height: originalHeight }
       } else {
         finalOptimizedBlob = optimizedBlob
         finalOptimizedSize = optimizedBlob.size
+        // Отримуємо реальні розміри оптимізованого файлу
+        const dims = await getImageDimensions(optimizedBlob)
+        if (dims) {
+          optimizedDimensions = dims
+        }
       }
     } catch (error) {
       // Для PNG якщо не вдалося оптимізувати (через canvas завжди більший) - використовуємо оригінал
       finalOptimizedBlob = file
       finalOptimizedSize = file.size
+      optimizedDimensions = { width: originalWidth, height: originalHeight }
     }
 
     // Конвертувати в WebP
     const webpBlob = await convertToWebP(img, quality)
+    
+    // Отримуємо реальні розміри WebP файлу
+    let webpDimensions = { width: originalWidth, height: originalHeight }
+    const webpDims = await getImageDimensions(webpBlob)
+    if (webpDims) {
+      webpDimensions = webpDims
+    }
 
     return {
       originalName,
@@ -1021,7 +1060,13 @@ export const useImageProcessor = () => {
       optimizedBlob: finalOptimizedBlob,
       webpName,
       webpSize: webpBlob.size,
-      webpBlob
+      webpBlob,
+      width: originalWidth,
+      height: originalHeight,
+      optimizedWidth: optimizedDimensions.width,
+      optimizedHeight: optimizedDimensions.height,
+      webpWidth: webpDimensions.width,
+      webpHeight: webpDimensions.height
     }
   }
 
