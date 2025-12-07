@@ -1,0 +1,24 @@
+{
+  "name": "img-convertor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview"
+  },
+  "dependencies": {
+    "browser-image-compression": "^2.0.2",
+    "image-q": "^4.0.0",
+    "jszip": "^3.10.1",
+    "nuxt": "^3.8.0",
+    "upng-js": "^2.1.0",
+    "vue": "^3.3.4"
+  },
+  "devDependencies": {
+    "@types/jszip": "^3.4.1",
+    "sass": "^1.69.5"
+  }
+}
