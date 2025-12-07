@@ -42,7 +42,13 @@
               <span class="stat-label">Оптимізований:</span>
               <div class="stat-value-wrapper">
                 <span class="stat-value success">{{ formatSize(result.optimizedSize) }}</span>
-                <span v-if="result.optimizedWidth && result.optimizedHeight" class="stat-dimensions">{{ result.optimizedWidth }}×{{ result.optimizedHeight }}</span>
+                <span 
+                  v-if="result.optimizedWidth && result.optimizedHeight" 
+                  class="stat-dimensions"
+                  :class="{ 'stat-dimensions-different': hasDifferentDimensions(result, 'optimized') }"
+                >
+                  {{ result.optimizedWidth }}×{{ result.optimizedHeight }}
+                </span>
                 <span class="stat-savings">
                   ({{ calculateSavings(result.originalSize, result.optimizedSize) }}%)
                 </span>
@@ -52,7 +58,13 @@
               <span class="stat-label">WebP:</span>
               <div class="stat-value-wrapper">
                 <span class="stat-value success">{{ formatSize(result.webpSize) }}</span>
-                <span v-if="result.webpWidth && result.webpHeight" class="stat-dimensions">{{ result.webpWidth }}×{{ result.webpHeight }}</span>
+                <span 
+                  v-if="result.webpWidth && result.webpHeight" 
+                  class="stat-dimensions"
+                  :class="{ 'stat-dimensions-different': hasDifferentDimensions(result, 'webp') }"
+                >
+                  {{ result.webpWidth }}×{{ result.webpHeight }}
+                </span>
                 <span class="stat-savings">
                   ({{ calculateSavings(result.originalSize, result.webpSize) }}%)
                 </span>
@@ -116,6 +128,23 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['download-optimized', 'download-webp', 'download-all', 'clear'])
+
+// Функція для перевірки, чи розміри відрізняються від оригіналу
+const hasDifferentDimensions = (result, type) => {
+  if (!result.width || !result.height) return false
+  
+  if (type === 'optimized') {
+    if (!result.optimizedWidth || !result.optimizedHeight) return false
+    return result.optimizedWidth !== result.width || result.optimizedHeight !== result.height
+  }
+  
+  if (type === 'webp') {
+    if (!result.webpWidth || !result.webpHeight) return false
+    return result.webpWidth !== result.width || result.webpHeight !== result.height
+  }
+  
+  return false
+}
 
 // Функція для визначення, чи WebP буде в архіві
 const willWebPBeInArchive = (result) => {
@@ -300,6 +329,13 @@ const handleClear = () => {
   padding: 0.125rem 0.5rem;
   background: $background-tertiary;
   border-radius: 4px;
+  transition: all 0.2s ease;
+  
+  &.stat-dimensions-different {
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.1);
+    font-weight: 600;
+  }
 }
 
 .stat-savings {
