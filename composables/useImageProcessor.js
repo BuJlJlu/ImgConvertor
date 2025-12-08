@@ -56,32 +56,71 @@ export const useImageProcessor = () => {
     return gradientCount > (width * height * 0.05)
   }
 
+  // Допоміжна функція для отримання розмірів зображення з blob
+  const getImageDimensions = (blob) => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      const url = URL.createObjectURL(blob)
+      
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        resolve({ width: img.width, height: img.height })
+      }
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        resolve(null)
+      }
+      
+      img.src = url
+    })
+  }
+
   // Допоміжна функція: застосування browser-image-compression для додаткової оптимізації
   const applyImageCompression = async (
     blob,
     originalSize,
-    targetReduction = 0.7
+    targetReduction = 0.7,
+    width = null,
+    height = null,
+    maxSizeMBMultiplier = 1.0
   ) => {
     try {
-      const targetSizeMB = (originalSize / 1024 / 1024) * (1 - targetReduction)
+      const targetSizeMB = (originalSize / 1024 / 1024) * (1 - targetReduction) * maxSizeMBMultiplier
       const file = new File([blob], 'temp.png', { type: 'image/png' })
       
-      const compressed = await imageCompression(file, {
+      const compressionOptions = {
         maxSizeMB: targetSizeMB,
         useWebWorker: true,
         fileType: 'image/png',
         initialQuality: 0.8
-      })
+      }
+      
+      // Додаємо maxWidthOrHeight для запобігання зміни розмірів
+      if (width !== null && height !== null) {
+        compressionOptions.maxWidthOrHeight = Math.max(width, height)
+      }
+      
+      const compressed = await imageCompression(file, compressionOptions)
+      
+      // Перевіряємо, чи змінилися розміри
+      let dimensionsChanged = false
+      if (width !== null && height !== null) {
+        const compressedDims = await getImageDimensions(compressed)
+        if (compressedDims) {
+          dimensionsChanged = compressedDims.width !== width || compressedDims.height !== height
+        }
+      }
       
       if (compressed.size < blob.size) {
         console.log(`Додаткова оптимізація: ${blob.size} -> ${compressed.size} байт (${((1 - compressed.size / blob.size) * 100).toFixed(1)}% додаткової економії)`)
-        return compressed
+        return { blob: compressed, dimensionsChanged }
       }
       
-      return blob
+      return { blob, dimensionsChanged }
     } catch (error) {
       console.warn('Додаткова оптимізація через browser-image-compression не вдалася:', error)
-      return blob
+      return { blob, dimensionsChanged: false }
     }
   }
 
@@ -615,7 +654,26 @@ export const useImageProcessor = () => {
     // Використовуємо originalSize якщо передано, інакше використовуємо розмір canvasBlob
     const targetSize = originalSize || canvasBlob.size
     try {
-      const optimizedBlob = await applyImageCompression(canvasBlob, targetSize, 0.7)
+      // Зберігаємо blob до оптимізації на випадок, якщо розміри зміняться
+      const blobBeforeCompression = canvasBlob
+      let compressionResult = await applyImageCompression(canvasBlob, targetSize, 0.7, width, height)
+      let optimizedBlob = compressionResult.blob
+      
+      // Якщо розміри змінилися, повторюємо оптимізацію з більшим maxSizeMB
+      if (compressionResult.dimensionsChanged) {
+        console.warn('Розміри зображення змінилися після оптимізації в findBestFilter, повторюємо з більшим maxSizeMB')
+        // Збільшуємо maxSizeMB в 2.5 рази для повторної спроби
+        compressionResult = await applyImageCompression(blobBeforeCompression, targetSize, 0.7, width, height, 2.5)
+        optimizedBlob = compressionResult.blob
+        
+        // Перевіряємо розміри після повторної оптимізації
+        if (compressionResult.dimensionsChanged) {
+          console.warn('Розміри все ще змінені після повторної оптимізації в findBestFilter, використовуємо blob до оптимізації')
+          // Використовуємо blob до оптимізації, щоб зберегти оригінальні розміри
+          optimizedBlob = blobBeforeCompression
+        }
+      }
+      
       return optimizedBlob
     } catch (error) {
       console.warn('Додаткова оптимізація Canvas fallback не вдалася:', error)
@@ -815,7 +873,25 @@ export const useImageProcessor = () => {
         
         // Застосовуємо додаткову оптимізацію через browser-image-compression
         const targetReduction = optimizationLevel / 100
-        optimizedBlob = await applyImageCompression(optimizedBlob, originalSize, targetReduction)
+        // Зберігаємо blob до оптимізації на випадок, якщо розміри зміняться
+        const blobBeforeCompression = optimizedBlob
+        let compressionResult = await applyImageCompression(optimizedBlob, originalSize, targetReduction, width, height)
+        optimizedBlob = compressionResult.blob
+        
+        // Якщо розміри змінилися, повторюємо оптимізацію з більшим maxSizeMB
+        if (compressionResult.dimensionsChanged) {
+          console.warn('Розміри зображення змінилися після оптимізації, повторюємо з більшим maxSizeMB')
+          // Збільшуємо maxSizeMB в 2.5 рази для повторної спроби
+          compressionResult = await applyImageCompression(blobBeforeCompression, originalSize, targetReduction, width, height, 2.5)
+          optimizedBlob = compressionResult.blob
+          
+          // Перевіряємо розміри після повторної оптимізації
+          if (compressionResult.dimensionsChanged) {
+            console.warn('Розміри все ще змінені після повторної оптимізації, використовуємо blob до оптимізації')
+            // Використовуємо blob до оптимізації, щоб зберегти оригінальні розміри
+            optimizedBlob = blobBeforeCompression
+          }
+        }
         
         const savings = ((1 - optimizedBlob.size / originalSize) * 100).toFixed(1)
         console.log(`Результат оптимізації: Оригінальний=${originalSize}, Оптимізований=${optimizedBlob.size}, Економія=${savings}%`)
@@ -971,26 +1047,6 @@ export const useImageProcessor = () => {
         'image/webp',
         quality / 100
       )
-    })
-  }
-
-  // Допоміжна функція для отримання розмірів зображення з blob
-  const getImageDimensions = (blob) => {
-    return new Promise((resolve) => {
-      const img = new Image()
-      const url = URL.createObjectURL(blob)
-      
-      img.onload = () => {
-        URL.revokeObjectURL(url)
-        resolve({ width: img.width, height: img.height })
-      }
-      
-      img.onerror = () => {
-        URL.revokeObjectURL(url)
-        resolve(null)
-      }
-      
-      img.src = url
     })
   }
 
